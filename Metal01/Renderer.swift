@@ -12,7 +12,10 @@ import MetalKit
 import simd
 
 // The 256 byte aligned size of our uniform structure
-let alignedUniformsSize = (MemoryLayout<Uniforms>.size + 0xFF) & -0x100
+let uniformsPVstride = ((MemoryLayout<UniformsPV>.size + 0xFF) & -0x100)
+let uniformsMstride = ((MemoryLayout<UniformsM>.size + 0xFF) & -0x100)
+let alignedUniformsPVSize = uniformsPVstride * 4
+let alignedUniformsMSize = uniformsMstride * 2
 
 let maxBuffersInFlight = 3
 
@@ -36,8 +39,11 @@ class Renderer: NSObject, MTKViewDelegate {
     
     var uniformBufferIndex = 0
     
-    var uniforms0: UnsafeMutablePointer<Uniforms>
-    var uniforms1: UnsafeMutablePointer<Uniforms>
+    var uniformsCombinedSize = 0
+    var uniformMOffset = 0
+    
+    var uniformsPV: UnsafeMutablePointer<UniformsPV>
+    var uniformsM: UnsafeMutablePointer<UniformsM>
     
     var projectionMatrix: matrix_float4x4 = matrix_float4x4()
     
@@ -51,15 +57,17 @@ class Renderer: NSObject, MTKViewDelegate {
         guard let queue = self.device.makeCommandQueue() else { return nil }
         self.commandQueue = queue
         
-        let uniformBufferSize = alignedUniformsSize * maxBuffersInFlight * 2
+        uniformsCombinedSize = alignedUniformsPVSize + alignedUniformsMSize
+        uniformMOffset = alignedUniformsPVSize
+        let uniformBufferSize = uniformsCombinedSize * maxBuffersInFlight
         
         guard let buffer = self.device.makeBuffer(length:uniformBufferSize, options:[MTLResourceOptions.storageModeShared]) else { return nil }
         dynamicUniformBuffer = buffer
         
         self.dynamicUniformBuffer.label = "UniformBuffer"
         
-        uniforms0 = UnsafeMutableRawPointer(dynamicUniformBuffer.contents()).bindMemory(to:Uniforms.self, capacity:1)
-        uniforms1 = UnsafeMutableRawPointer(dynamicUniformBuffer.contents() + alignedUniformsSize).bindMemory(to:Uniforms.self, capacity:1)
+        uniformsPV = UnsafeMutableRawPointer(dynamicUniformBuffer.contents()).bindMemory(to:UniformsPV.self, capacity:1)
+        uniformsM = UnsafeMutableRawPointer(dynamicUniformBuffer.contents() + uniformMOffset).bindMemory(to:UniformsM.self, capacity:1)
         
         metalKitView.depthStencilPixelFormat = MTLPixelFormat.depth32Float_stencil8
         metalKitView.colorPixelFormat = MTLPixelFormat.bgra8Unorm_srgb
@@ -215,7 +223,8 @@ class Renderer: NSObject, MTKViewDelegate {
         
         let textureLoaderOptions = [
             MTKTextureLoader.Option.textureUsage: NSNumber(value: MTLTextureUsage.shaderRead.rawValue),
-            MTKTextureLoader.Option.textureStorageMode: NSNumber(value: MTLStorageMode.`private`.rawValue)
+            MTKTextureLoader.Option.textureStorageMode: NSNumber(value: MTLStorageMode.`private`.rawValue),
+            .generateMipmaps: true
         ]
         
         return try textureLoader.newTexture(name: textureName,
@@ -229,37 +238,54 @@ class Renderer: NSObject, MTKViewDelegate {
         /// Update the state of our uniform buffers before rendering
         
         uniformBufferIndex = (uniformBufferIndex + 1) % maxBuffersInFlight
-        
-        uniformBufferOffset = alignedUniformsSize * uniformBufferIndex * 2
-        
-        uniforms0 = UnsafeMutableRawPointer(dynamicUniformBuffer.contents() + uniformBufferOffset).bindMemory(to:Uniforms.self, capacity:1)
-        uniforms1 = UnsafeMutableRawPointer(dynamicUniformBuffer.contents() + uniformBufferOffset + alignedUniformsSize).bindMemory(to:Uniforms.self, capacity:1)
+        uniformBufferOffset = uniformsCombinedSize * uniformBufferIndex
     }
     
     private func updateGameState() {
         /// Update any game state before rendering
         
-        uniforms0[0].projectionMatrix = projectionMatrix
-        uniforms1[0].projectionMatrix = projectionMatrix
+        uniformsPV = UnsafeMutableRawPointer(dynamicUniformBuffer.contents() + uniformBufferOffset).bindMemory(to:UniformsPV.self, capacity:1)
+        uniformsPV[0].viewMatrix = matrix4x4_translation(0.0, 0.0, 8.0)
+        uniformsPV[0].projectionMatrix = projectionMatrix
+        
+        uniformsPV = UnsafeMutableRawPointer(dynamicUniformBuffer.contents() + uniformBufferOffset + uniformsPVstride).bindMemory(to:UniformsPV.self, capacity:1)
+        uniformsPV[0].viewMatrix = simd_mul(matrix4x4_translation(0.0, 0.0, 9.0), matrix4x4_rotation(radians: .pi / 4, axis: .init(1, 0, 0)))
+        uniformsPV[0].projectionMatrix = projectionMatrix
+        
+        uniformsPV = UnsafeMutableRawPointer(dynamicUniformBuffer.contents() + uniformBufferOffset + uniformsPVstride * 2).bindMemory(to:UniformsPV.self, capacity:1)
+        uniformsPV[0].viewMatrix = simd_mul(matrix4x4_translation(0.0, 0.0, 10.0), matrix4x4_rotation(radians: -Float.pi / 3, axis: .init(1, 0, 0)))
+        uniformsPV[0].projectionMatrix = projectionMatrix
+        
+        uniformsPV = UnsafeMutableRawPointer(dynamicUniformBuffer.contents() + uniformBufferOffset + uniformsPVstride * 3).bindMemory(to:UniformsPV.self, capacity:1)
+        uniformsPV[0].viewMatrix = simd_mul(matrix4x4_translation(0.0, 0.0, 12.0), matrix4x4_rotation(radians: rotation, axis: .init(1, 1, 1)))
+        uniformsPV[0].projectionMatrix = projectionMatrix
         
         let rotationAxis = SIMD3<Float>(1, 1, 0)
-        let modelMatrix = makeQuaternionRotationMatrix(radians: rotation, axis: rotationAxis)
+        let rotation0 = makeQuaternionRotationMatrix(radians: rotation, axis: rotationAxis)
+        let rotation1 = makeQuaternionRotationMatrix(radians: rotation * 4, axis: rotationAxis)
 //        let modelMatrix = matrix4x4_rotation(radians: rotation, axis: rotationAxis)
 //        let modelMatrix = makeRotationMatrix(radians: rotation, axis: rotationAxis)
-        let viewMatrix = matrix4x4_translation(0.0, -1.0, 8.0)
+        let translation0 = matrix4x4_translation(0.0, -2.0, 0.0)
+        let translation1 = matrix4x4_translation(0.0, 2.0, 0.0)
         let scaleMatrix = makeScaleMatrix(scale: .init(x: 0.5, y: 0.5, z: 0.5))
-        uniforms0[0].modelViewMatrix = simd_mul(viewMatrix, simd_mul(modelMatrix, scaleMatrix))
-        let viewMatrix1 = matrix4x4_translation(0.0, 3.0, 8.0)
-        uniforms1[0].modelViewMatrix = simd_mul(viewMatrix1, modelMatrix)
-        rotation += 0.025
+        uniformsM = UnsafeMutableRawPointer(dynamicUniformBuffer.contents() + uniformBufferOffset + uniformMOffset).bindMemory(to:UniformsM.self, capacity:1)
+        uniformsM[0].modelMatrix = simd_mul(translation0, simd_mul(rotation0, scaleMatrix))
+        
+        uniformsM = UnsafeMutableRawPointer(dynamicUniformBuffer.contents() + uniformBufferOffset + uniformMOffset + uniformsMstride).bindMemory(to:UniformsM.self, capacity:1)
+        uniformsM[0].modelMatrix = simd_mul(translation1, rotation1)
+        rotation += 0.015
     }
     
     private func draw(renderEncoder: MTLRenderCommandEncoder, viewport: MTLViewport) {
         renderEncoder.setViewport(viewport)
         let textures = [colorMap0, colorMap1]
         for x in 0..<2 {
-            renderEncoder.setVertexBuffer(dynamicUniformBuffer, offset:uniformBufferOffset + alignedUniformsSize * x, index: BufferIndex.uniforms.rawValue)
-            renderEncoder.setFragmentBuffer(dynamicUniformBuffer, offset:uniformBufferOffset + alignedUniformsSize * x, index: BufferIndex.uniforms.rawValue)
+            renderEncoder.setVertexBuffer(dynamicUniformBuffer,
+                                          offset:uniformBufferOffset + uniformMOffset + uniformsMstride * x,
+                                          index: BufferIndex.uniformsM.rawValue)
+            renderEncoder.setFragmentBuffer(dynamicUniformBuffer,
+                                            offset:uniformBufferOffset + uniformMOffset + uniformsMstride * x,
+                                            index: BufferIndex.uniformsM.rawValue)
             
             for (index, element) in meshes[x].vertexDescriptor.layouts.enumerated() {
                 guard let layout = element as? MDLVertexBufferLayout else {
@@ -315,19 +341,21 @@ class Renderer: NSObject, MTKViewDelegate {
                 renderEncoder.setDepthStencilState(depthState)
                 
                 
-                var viewport = MTLViewport(originX: 0, originY: 0, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0)
-                draw(renderEncoder: renderEncoder, viewport: viewport)
-                
-                
-                viewport = MTLViewport(originX: view.drawableSize.width / 2, originY: 0, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0)
-                draw(renderEncoder: renderEncoder, viewport: viewport)
-                
-                viewport = MTLViewport(originX: 0, originY: view.drawableSize.height / 2, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0)
-                draw(renderEncoder: renderEncoder, viewport: viewport)
-                
-                viewport = MTLViewport(originX: view.drawableSize.width / 2, originY: view.drawableSize.height / 2, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0)
-                draw(renderEncoder: renderEncoder, viewport: viewport)
-                
+                let viewports = [
+                    MTLViewport(originX: 0, originY: 0, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0),
+                    MTLViewport(originX: view.drawableSize.width / 2, originY: 0, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0),
+                    MTLViewport(originX: 0, originY: view.drawableSize.height / 2, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0),
+                    MTLViewport(originX: view.drawableSize.width / 2, originY: view.drawableSize.height / 2, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0)
+                    ]
+                for x in 0..<4 {
+                    renderEncoder.setVertexBuffer(dynamicUniformBuffer,
+                                                  offset:uniformBufferOffset + uniformsPVstride * x,
+                                                  index: BufferIndex.uniformsPV.rawValue)
+                    renderEncoder.setFragmentBuffer(dynamicUniformBuffer,
+                                                    offset:uniformBufferOffset + uniformsPVstride * x,
+                                                    index: BufferIndex.uniformsPV.rawValue)
+                    draw(renderEncoder: renderEncoder, viewport: viewports[x])
+                }
                 
                 renderEncoder.popDebugGroup()
                 renderEncoder.endEncoding()
@@ -340,75 +368,75 @@ class Renderer: NSObject, MTKViewDelegate {
         }
     }
     
-    func draw1(in view: MTKView) {
-        /// Per frame updates hare
-        
-        _ = inFlightSemaphore.wait(timeout: DispatchTime.distantFuture)
-        
-        if let commandBuffer = commandQueue.makeCommandBuffer() {
-            
-            let semaphore = inFlightSemaphore
-            commandBuffer.addCompletedHandler { (_ commandBuffer)-> Swift.Void in
-                semaphore.signal()
-            }
-            
-            self.updateDynamicBufferState()
-            
-            self.updateGameState()
-            
-            /// Delay getting the currentRenderPassDescriptor until we absolutely need it to avoid
-            ///   holding onto the drawable and blocking the display pipeline any longer than necessary
-            let renderPassDescriptor = view.currentRenderPassDescriptor
-            
-            if let renderPassDescriptor, let parallelRenderEncoder = commandBuffer.makeParallelRenderCommandEncoder(descriptor: renderPassDescriptor) {
-                /// Final pass rendering code here
-                
-                let textures = [colorMap0, colorMap1]
-                for x in 0..<2 {
-                    let renderEncoder = parallelRenderEncoder.makeRenderCommandEncoder()!
-                    renderEncoder.label = "Primary Render Encoder"
-                    renderEncoder.pushDebugGroup("Draw Box")
-                    renderEncoder.setCullMode(.back)
-                    renderEncoder.setFrontFacing(.clockwise)
-                    renderEncoder.setRenderPipelineState(pipelineState)
-                    renderEncoder.setDepthStencilState(depthState)
-                    
-                    renderEncoder.setVertexBuffer(dynamicUniformBuffer, offset:uniformBufferOffset + alignedUniformsSize * x, index: BufferIndex.uniforms.rawValue)
-                    renderEncoder.setFragmentBuffer(dynamicUniformBuffer, offset:uniformBufferOffset + alignedUniformsSize * x, index: BufferIndex.uniforms.rawValue)
-                    
-                    for (index, element) in meshes[x].vertexDescriptor.layouts.enumerated() {
-                        guard let layout = element as? MDLVertexBufferLayout else {
-                            return
-                        }
-                        
-                        if layout.stride != 0 {
-                            let buffer = meshes[x].vertexBuffers[index]
-                            renderEncoder.setVertexBuffer(buffer.buffer, offset:buffer.offset, index: index)
-                        }
-                    }
-                    
-                    renderEncoder.setFragmentTexture(textures[x], index: TextureIndex.color.rawValue)
-                    
-                    for submesh in meshes[x].submeshes {
-                        renderEncoder.drawIndexedPrimitives(type: submesh.primitiveType,
-                                                            indexCount: submesh.indexCount,
-                                                            indexType: submesh.indexType,
-                                                            indexBuffer: submesh.indexBuffer.buffer,
-                                                            indexBufferOffset: submesh.indexBuffer.offset)
-                        
-                    }
-                    renderEncoder.popDebugGroup()
-                    renderEncoder.endEncoding()
-                }
-                parallelRenderEncoder.endEncoding()
-            }
-            if let drawable = view.currentDrawable {
-                commandBuffer.present(drawable)
-            }
- 
-            commandBuffer.commit()
-        }
-    }
+//    func draw1(in view: MTKView) {
+//        /// Per frame updates hare
+//        
+//        _ = inFlightSemaphore.wait(timeout: DispatchTime.distantFuture)
+//        
+//        if let commandBuffer = commandQueue.makeCommandBuffer() {
+//            
+//            let semaphore = inFlightSemaphore
+//            commandBuffer.addCompletedHandler { (_ commandBuffer)-> Swift.Void in
+//                semaphore.signal()
+//            }
+//            
+//            self.updateDynamicBufferState()
+//            
+//            self.updateGameState()
+//            
+//            /// Delay getting the currentRenderPassDescriptor until we absolutely need it to avoid
+//            ///   holding onto the drawable and blocking the display pipeline any longer than necessary
+//            let renderPassDescriptor = view.currentRenderPassDescriptor
+//            
+//            if let renderPassDescriptor, let parallelRenderEncoder = commandBuffer.makeParallelRenderCommandEncoder(descriptor: renderPassDescriptor) {
+//                /// Final pass rendering code here
+//                
+//                let textures = [colorMap0, colorMap1]
+//                for x in 0..<2 {
+//                    let renderEncoder = parallelRenderEncoder.makeRenderCommandEncoder()!
+//                    renderEncoder.label = "Primary Render Encoder"
+//                    renderEncoder.pushDebugGroup("Draw Box")
+//                    renderEncoder.setCullMode(.back)
+//                    renderEncoder.setFrontFacing(.clockwise)
+//                    renderEncoder.setRenderPipelineState(pipelineState)
+//                    renderEncoder.setDepthStencilState(depthState)
+//                    
+//                    renderEncoder.setVertexBuffer(dynamicUniformBuffer, offset:uniformBufferOffset + alignedUniformsSize * x, index: BufferIndex.uniforms.rawValue)
+//                    renderEncoder.setFragmentBuffer(dynamicUniformBuffer, offset:uniformBufferOffset + alignedUniformsSize * x, index: BufferIndex.uniforms.rawValue)
+//                    
+//                    for (index, element) in meshes[x].vertexDescriptor.layouts.enumerated() {
+//                        guard let layout = element as? MDLVertexBufferLayout else {
+//                            return
+//                        }
+//                        
+//                        if layout.stride != 0 {
+//                            let buffer = meshes[x].vertexBuffers[index]
+//                            renderEncoder.setVertexBuffer(buffer.buffer, offset:buffer.offset, index: index)
+//                        }
+//                    }
+//                    
+//                    renderEncoder.setFragmentTexture(textures[x], index: TextureIndex.color.rawValue)
+//                    
+//                    for submesh in meshes[x].submeshes {
+//                        renderEncoder.drawIndexedPrimitives(type: submesh.primitiveType,
+//                                                            indexCount: submesh.indexCount,
+//                                                            indexType: submesh.indexType,
+//                                                            indexBuffer: submesh.indexBuffer.buffer,
+//                                                            indexBufferOffset: submesh.indexBuffer.offset)
+//                        
+//                    }
+//                    renderEncoder.popDebugGroup()
+//                    renderEncoder.endEncoding()
+//                }
+//                parallelRenderEncoder.endEncoding()
+//            }
+//            if let drawable = view.currentDrawable {
+//                commandBuffer.present(drawable)
+//            }
+// 
+//            commandBuffer.commit()
+//        }
+//    }
     
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         /// Respond to drawable size or orientation changes here

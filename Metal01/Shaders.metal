@@ -28,12 +28,14 @@ typedef struct
 } ColorInOut;
 
 vertex ColorInOut vertexShader(Vertex in [[stage_in]],
-                               constant Uniforms & uniforms [[ buffer(BufferIndexUniforms) ]])
+                               constant UniformsPV & uniformsPV [[ buffer(BufferIndexUniformsPV) ]],
+                               constant UniformsM & uniformsM [[ buffer(BufferIndexUniformsM) ]]
+                               )
 {
     ColorInOut out;
 
     float4 position = float4(in.position, 1.0);
-    out.position = uniforms.projectionMatrix * uniforms.modelViewMatrix * position;
+    out.position = uniformsPV.projectionMatrix * uniformsPV.viewMatrix * uniformsM.modelMatrix * position;
     out.texCoord = in.texCoord;
 
     return out;
@@ -42,19 +44,22 @@ vertex ColorInOut vertexShader(Vertex in [[stage_in]],
 vertex ColorInOut vertexShader1(uint vertexID [[vertex_id]],
                                constant float3 *vertices [[buffer(0)]],
                                constant float2 *texCoords [[buffer(1)]],
-                               constant Uniforms & uniforms [[ buffer(BufferIndexUniforms) ]])
+                               constant UniformsPV & uniformsPV [[ buffer(BufferIndexUniformsPV) ]],
+                               constant UniformsM & uniformsM [[ buffer(BufferIndexUniformsM) ]]
+                                )
 {
     ColorInOut out;
 
     float4 position = float4(vertices[vertexID], 1.0);
-    out.position = uniforms.projectionMatrix * uniforms.modelViewMatrix * position;
+    out.position = uniformsPV.projectionMatrix * uniformsPV.viewMatrix * uniformsM.modelMatrix * position;
     out.texCoord = texCoords[vertexID];
 
     return out;
 }
 
 fragment float4 fragmentShader(ColorInOut in [[stage_in]],
-                               constant Uniforms & uniforms [[ buffer(BufferIndexUniforms) ]],
+                               constant UniformsPV & uniformsPV [[ buffer(BufferIndexUniformsPV) ]],
+                               constant UniformsM & uniformsM [[ buffer(BufferIndexUniformsM) ]],
                                texture2d<half> colorMap     [[ texture(TextureIndexColor) ]])
 {
     constexpr sampler colorSampler(mip_filter::linear,
@@ -63,5 +68,5 @@ fragment float4 fragmentShader(ColorInOut in [[stage_in]],
 
     half4 colorSample   = colorMap.sample(colorSampler, in.texCoord.xy);
 
-    return float4(colorSample);
+    return float4(colorSample) + float4(1 * (1 - colorSample.a), 1 * (1 - colorSample.a), 0, 0);
 }
