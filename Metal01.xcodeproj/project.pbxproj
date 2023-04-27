@@ -14,6 +14,7 @@
 		EC42509529F1A05700EC0755 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = EC42509329F1A05700EC0755 /* Main.storyboard */; };
 		EC42509729F1A05800EC0755 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EC42509629F1A05800EC0755 /* Assets.xcassets */; };
 		EC42509A29F1A05800EC0755 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = EC42509829F1A05800EC0755 /* LaunchScreen.storyboard */; };
+		EC4250A129F1A1F500EC0755 /* GZLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC4250A029F1A1F500EC0755 /* GZLog.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +27,7 @@
 		EC42509429F1A05700EC0755 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		EC42509629F1A05800EC0755 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		EC42509929F1A05800EC0755 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		EC4250A029F1A1F500EC0755 /* GZLog.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GZLog.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -58,6 +60,7 @@
 		EC42508929F1A05700EC0755 /* Metal01 */ = {
 			isa = PBXGroup;
 			children = (
+				EC4250A029F1A1F500EC0755 /* GZLog.swift */,
 				EC42508A29F1A05700EC0755 /* AppDelegate.swift */,
 				EC42508C29F1A05700EC0755 /* ShaderTypes.h */,
 				EC42508D29F1A05700EC0755 /* Renderer.swift */,
@@ -145,6 +148,7 @@
 				EC42508E29F1A05700EC0755 /* Renderer.swift in Sources */,
 				EC42509029F1A05700EC0755 /* GameViewController.swift in Sources */,
 				EC42508B29F1A05700EC0755 /* AppDelegate.swift in Sources */,
+				EC4250A129F1A1F500EC0755 /* GZLog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -39,6 +39,20 @@ vertex ColorInOut vertexShader(Vertex in [[stage_in]],
     return out;
 }
 
+vertex ColorInOut vertexShader1(uint vertexID [[vertex_id]],
+                               constant float3 *vertices [[buffer(0)]],
+                               constant float2 *texCoords [[buffer(1)]],
+                               constant Uniforms & uniforms [[ buffer(BufferIndexUniforms) ]])
+{
+    ColorInOut out;
+
+    float4 position = float4(vertices[vertexID], 1.0);
+    out.position = uniforms.projectionMatrix * uniforms.modelViewMatrix * position;
+    out.texCoord = texCoords[vertexID];
+
+    return out;
+}
+
 fragment float4 fragmentShader(ColorInOut in [[stage_in]],
                                constant Uniforms & uniforms [[ buffer(BufferIndexUniforms) ]],
                                texture2d<half> colorMap     [[ texture(TextureIndexColor) ]])

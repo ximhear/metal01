@@ -16,6 +16,12 @@ class GameViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        let intMin: UInt = UInt.max - 255
+        let hexString = String(intMin, radix: 16)
+        GZLogFunc(intMin)
+        GZLogFunc(hexString)
+
 
         guard let mtkView = view as? MTKView else {
             print("View of Gameview controller is not an MTKView")
@@ -28,8 +34,15 @@ class GameViewController: UIViewController {
             return
         }
         
+        for x in 0..<32 {
+            let supported = defaultDevice.supportsTextureSampleCount(x)
+            if supported {
+                GZLogFunc("\(x) : \(supported)")
+            }
+        }
+        
         mtkView.device = defaultDevice
-        mtkView.backgroundColor = UIColor.black
+        mtkView.backgroundColor = UIColor.cyan
 
         guard let newRenderer = Renderer(metalKitView: mtkView) else {
             print("Renderer cannot be initialized")
