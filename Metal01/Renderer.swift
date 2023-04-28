@@ -406,75 +406,75 @@ private func draw(renderEncoder: MTLRenderCommandEncoder, viewport: MTLViewport,
         }
     }
     
-//    func draw1(in view: MTKView) {
-//        /// Per frame updates hare
-//        
-//        _ = inFlightSemaphore.wait(timeout: DispatchTime.distantFuture)
-//        
-//        if let commandBuffer = commandQueue.makeCommandBuffer() {
-//            
-//            let semaphore = inFlightSemaphore
-//            commandBuffer.addCompletedHandler { (_ commandBuffer)-> Swift.Void in
-//                semaphore.signal()
-//            }
-//            
-//            self.updateDynamicBufferState()
-//            
-//            self.updateGameState()
-//            
-//            /// Delay getting the currentRenderPassDescriptor until we absolutely need it to avoid
-//            ///   holding onto the drawable and blocking the display pipeline any longer than necessary
-//            let renderPassDescriptor = view.currentRenderPassDescriptor
-//            
-//            if let renderPassDescriptor, let parallelRenderEncoder = commandBuffer.makeParallelRenderCommandEncoder(descriptor: renderPassDescriptor) {
-//                /// Final pass rendering code here
-//                
-//                let textures = [colorMap0, colorMap1]
-//                for x in 0..<2 {
-//                    let renderEncoder = parallelRenderEncoder.makeRenderCommandEncoder()!
-//                    renderEncoder.label = "Primary Render Encoder"
-//                    renderEncoder.pushDebugGroup("Draw Box")
-//                    renderEncoder.setCullMode(.back)
-//                    renderEncoder.setFrontFacing(.clockwise)
-//                    renderEncoder.setRenderPipelineState(pipelineState)
-//                    renderEncoder.setDepthStencilState(depthState)
-//                    
-//                    renderEncoder.setVertexBuffer(dynamicUniformBuffer, offset:uniformBufferOffset + alignedUniformsSize * x, index: BufferIndex.uniforms.rawValue)
-//                    renderEncoder.setFragmentBuffer(dynamicUniformBuffer, offset:uniformBufferOffset + alignedUniformsSize * x, index: BufferIndex.uniforms.rawValue)
-//                    
-//                    for (index, element) in meshes[x].vertexDescriptor.layouts.enumerated() {
-//                        guard let layout = element as? MDLVertexBufferLayout else {
-//                            return
-//                        }
-//                        
-//                        if layout.stride != 0 {
-//                            let buffer = meshes[x].vertexBuffers[index]
-//                            renderEncoder.setVertexBuffer(buffer.buffer, offset:buffer.offset, index: index)
-//                        }
-//                    }
-//                    
-//                    renderEncoder.setFragmentTexture(textures[x], index: TextureIndex.color.rawValue)
-//                    
-//                    for submesh in meshes[x].submeshes {
-//                        renderEncoder.drawIndexedPrimitives(type: submesh.primitiveType,
-//                                                            indexCount: submesh.indexCount,
-//                                                            indexType: submesh.indexType,
-//                                                            indexBuffer: submesh.indexBuffer.buffer,
-//                                                            indexBufferOffset: submesh.indexBuffer.offset)
-//                        
-//                    }
-//                    renderEncoder.popDebugGroup()
-//                    renderEncoder.endEncoding()
-//                }
-//                parallelRenderEncoder.endEncoding()
-//            }
-//            if let drawable = view.currentDrawable {
-//                commandBuffer.present(drawable)
-//            }
-// 
-//            commandBuffer.commit()
-//        }
-//    }
+    func draw1(in view: MTKView) {
+        /// Per frame updates hare
+        
+        _ = inFlightSemaphore.wait(timeout: DispatchTime.distantFuture)
+        
+        if let commandBuffer = commandQueue.makeCommandBuffer() {
+            
+            let semaphore = inFlightSemaphore
+            commandBuffer.addCompletedHandler { (_ commandBuffer)-> Swift.Void in
+                semaphore.signal()
+            }
+            
+            self.updateDynamicBufferState()
+            
+            self.updateGameState()
+            
+            /// Delay getting the currentRenderPassDescriptor until we absolutely need it to avoid
+            ///   holding onto the drawable and blocking the display pipeline any longer than necessary
+            let renderPassDescriptor = view.currentRenderPassDescriptor
+            
+            if let renderPassDescriptor, let parallelRenderEncoder = commandBuffer.makeParallelRenderCommandEncoder(descriptor: renderPassDescriptor) {
+                /// Final pass rendering code here
+                
+                let viewports = [
+                    MTLViewport(originX: 0, originY: 0, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0),
+                    MTLViewport(originX: view.drawableSize.width / 2, originY: 0, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0),
+                    MTLViewport(originX: 0, originY: view.drawableSize.height / 2, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0),
+                    MTLViewport(originX: view.drawableSize.width / 2, originY: view.drawableSize.height / 2, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0)
+                    ]
+                
+                let primitives: [MTLPrimitiveType?] = [
+                    nil, nil, .lineStrip, nil
+                ]
+                let pipelines = [
+                    pipelineState,
+                    pipelineState,
+                    pipelineStateLine,
+                    pipelineState,
+                ]
+                for x in 0..<4 {
+                    let renderEncoder = parallelRenderEncoder.makeRenderCommandEncoder()!
+                    renderEncoder.label = "Primary Render Encoder"
+                    renderEncoder.pushDebugGroup("Draw Box")
+                    renderEncoder.setCullMode(.back)
+                    renderEncoder.setFrontFacing(.clockwise)
+                    renderEncoder.setRenderPipelineState(pipelines[x])
+                    renderEncoder.setDepthStencilState(depthState)
+                    
+                    renderEncoder.setVertexBuffer(dynamicUniformBuffer,
+                                                  offset:uniformBufferOffset + uniformsPVstride * x,
+                                                  index: BufferIndex.uniformsPV.rawValue)
+                    renderEncoder.setFragmentBuffer(dynamicUniformBuffer,
+                                                    offset:uniformBufferOffset + uniformsPVstride * x,
+                                                    index: BufferIndex.uniformsPV.rawValue)
+                    
+                    draw(renderEncoder: renderEncoder, viewport: viewports[x], primitiveType: primitives[x])
+                    
+                    renderEncoder.popDebugGroup()
+                    renderEncoder.endEncoding()
+                }
+                parallelRenderEncoder.endEncoding()
+            }
+            if let drawable = view.currentDrawable {
+                commandBuffer.present(drawable)
+            }
+ 
+            commandBuffer.commit()
+        }
+    }
     
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         /// Respond to drawable size or orientation changes here
