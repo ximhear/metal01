@@ -29,6 +29,7 @@ class Renderer: NSObject, MTKViewDelegate {
     let commandQueue: MTLCommandQueue
     var dynamicUniformBuffer: MTLBuffer
     var pipelineState: MTLRenderPipelineState
+    var pipelineStateLine: MTLRenderPipelineState
     var depthState: MTLDepthStencilState
     var colorMap0: MTLTexture
     var colorMap1: MTLTexture
@@ -77,6 +78,9 @@ class Renderer: NSObject, MTKViewDelegate {
         
         do {
             pipelineState = try Renderer.buildRenderPipelineWithDevice(device: device,
+                                                                       metalKitView: metalKitView,
+                                                                       mtlVertexDescriptor: mtlVertexDescriptor)
+            pipelineStateLine = try Renderer.buildRenderPipelineLineWithDevice(device: device,
                                                                        metalKitView: metalKitView,
                                                                        mtlVertexDescriptor: mtlVertexDescriptor)
         } catch {
@@ -144,6 +148,30 @@ class Renderer: NSObject, MTKViewDelegate {
         
         let vertexFunction = library?.makeFunction(name: "vertexShader")
         let fragmentFunction = library?.makeFunction(name: "fragmentShader")
+        
+        let pipelineDescriptor = MTLRenderPipelineDescriptor()
+        pipelineDescriptor.label = "RenderPipeline"
+        pipelineDescriptor.rasterSampleCount = metalKitView.sampleCount
+        pipelineDescriptor.vertexFunction = vertexFunction
+        pipelineDescriptor.fragmentFunction = fragmentFunction
+        pipelineDescriptor.vertexDescriptor = mtlVertexDescriptor
+        
+        pipelineDescriptor.colorAttachments[0].pixelFormat = metalKitView.colorPixelFormat
+        pipelineDescriptor.depthAttachmentPixelFormat = metalKitView.depthStencilPixelFormat
+        pipelineDescriptor.stencilAttachmentPixelFormat = metalKitView.depthStencilPixelFormat
+        
+        return try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
+    }
+    
+    class func buildRenderPipelineLineWithDevice(device: MTLDevice,
+                                             metalKitView: MTKView,
+                                             mtlVertexDescriptor: MTLVertexDescriptor) throws -> MTLRenderPipelineState {
+        /// Build a render state pipeline object
+        
+        let library = device.makeDefaultLibrary()
+        
+        let vertexFunction = library?.makeFunction(name: "vertexShader")
+        let fragmentFunction = library?.makeFunction(name: "fragmentShaderSolid")
         
         let pipelineDescriptor = MTLRenderPipelineDescriptor()
         pipelineDescriptor.label = "RenderPipeline"
@@ -276,7 +304,7 @@ class Renderer: NSObject, MTKViewDelegate {
         rotation += 0.015
     }
     
-    private func draw(renderEncoder: MTLRenderCommandEncoder, viewport: MTLViewport) {
+private func draw(renderEncoder: MTLRenderCommandEncoder, viewport: MTLViewport, primitiveType: MTLPrimitiveType? = nil) {
         renderEncoder.setViewport(viewport)
         let textures = [colorMap0, colorMap1]
         for x in 0..<2 {
@@ -301,7 +329,7 @@ class Renderer: NSObject, MTKViewDelegate {
             renderEncoder.setFragmentTexture(textures[x], index: TextureIndex.color.rawValue)
             
             for submesh in meshes[x].submeshes {
-                renderEncoder.drawIndexedPrimitives(type: submesh.primitiveType,
+                renderEncoder.drawIndexedPrimitives(type: primitiveType ?? submesh.primitiveType,
                                                     indexCount: submesh.indexCount,
                                                     indexType: submesh.indexType,
                                                     indexBuffer: submesh.indexBuffer.buffer,
@@ -337,7 +365,6 @@ class Renderer: NSObject, MTKViewDelegate {
                 renderEncoder.pushDebugGroup("Draw Box")
                 renderEncoder.setCullMode(.back)
                 renderEncoder.setFrontFacing(.clockwise)
-                renderEncoder.setRenderPipelineState(pipelineState)
                 renderEncoder.setDepthStencilState(depthState)
                 
                 
@@ -347,14 +374,25 @@ class Renderer: NSObject, MTKViewDelegate {
                     MTLViewport(originX: 0, originY: view.drawableSize.height / 2, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0),
                     MTLViewport(originX: view.drawableSize.width / 2, originY: view.drawableSize.height / 2, width: Double(view.drawableSize.width / 2), height: Double(view.drawableSize.height / 2), znear: 0.0, zfar: 1.0)
                     ]
+                
+                let primitives: [MTLPrimitiveType?] = [
+                    nil, nil, .lineStrip, nil
+                ]
+                let pipelines = [
+                    pipelineState,
+                    pipelineState,
+                    pipelineStateLine,
+                    pipelineState,
+                ]
                 for x in 0..<4 {
+                    renderEncoder.setRenderPipelineState(pipelines[x])
                     renderEncoder.setVertexBuffer(dynamicUniformBuffer,
                                                   offset:uniformBufferOffset + uniformsPVstride * x,
                                                   index: BufferIndex.uniformsPV.rawValue)
                     renderEncoder.setFragmentBuffer(dynamicUniformBuffer,
                                                     offset:uniformBufferOffset + uniformsPVstride * x,
                                                     index: BufferIndex.uniformsPV.rawValue)
-                    draw(renderEncoder: renderEncoder, viewport: viewports[x])
+                    draw(renderEncoder: renderEncoder, viewport: viewports[x], primitiveType: primitives[x])
                 }
                 
                 renderEncoder.popDebugGroup()

@@ -68,5 +68,14 @@ fragment float4 fragmentShader(ColorInOut in [[stage_in]],
 
     half4 colorSample   = colorMap.sample(colorSampler, in.texCoord.xy);
 
-    return float4(colorSample) + float4(1 * (1 - colorSample.a), 1 * (1 - colorSample.a), 0, 0);
+    return float4(colorSample.r * colorSample.a, colorSample.g * colorSample.a, colorSample.b * colorSample.a, 1) + float4(1 * (1 - colorSample.a), 1 * (1 - colorSample.a), 0, 0);
+}
+
+
+fragment float4 fragmentShaderSolid(ColorInOut in [[stage_in]],
+                               constant UniformsPV & uniformsPV [[ buffer(BufferIndexUniformsPV) ]],
+                               constant UniformsM & uniformsM [[ buffer(BufferIndexUniformsM) ]],
+                               texture2d<half> colorMap     [[ texture(TextureIndexColor) ]])
+{
+    return float4(1, 1, 1, 1);
 }
