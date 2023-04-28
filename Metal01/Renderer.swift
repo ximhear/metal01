@@ -190,7 +190,7 @@ class Renderer: NSObject, MTKViewDelegate {
     class func buildMeshes(device: MTLDevice,
                          mtlVertexDescriptor: MTLVertexDescriptor) throws -> [MTKMesh] {
         let a = try buildMesh1(device: device, mtlVertexDescriptor: mtlVertexDescriptor)
-        let b = try buildMesh2(device: device, mtlVertexDescriptor: mtlVertexDescriptor)
+        let b = try buildMesh3(device: device, mtlVertexDescriptor: mtlVertexDescriptor)
         return [a, b]
     }
     
@@ -229,6 +229,27 @@ class Renderer: NSObject, MTKViewDelegate {
                                      inwardNormals:false,
                                      geometryType: MDLGeometryType.triangles,
                                      allocator: metalAllocator)
+        
+        let mdlVertexDescriptor = MTKModelIOVertexDescriptorFromMetal(mtlVertexDescriptor)
+        
+        guard let attributes = mdlVertexDescriptor.attributes as? [MDLVertexAttribute] else {
+            throw RendererError.badVertexDescriptor
+        }
+        attributes[VertexAttribute.position.rawValue].name = MDLVertexAttributePosition
+        attributes[VertexAttribute.texcoord.rawValue].name = MDLVertexAttributeTextureCoordinate
+        
+        mdlMesh.vertexDescriptor = mdlVertexDescriptor
+        
+        return try MTKMesh(mesh:mdlMesh, device:device)
+    }
+    
+    class func buildMesh3(device: MTLDevice,
+                         mtlVertexDescriptor: MTLVertexDescriptor) throws -> MTKMesh {
+        /// Create and condition mesh data to feed into a pipeline using the given vertex descriptor
+        
+        let metalAllocator = MTKMeshBufferAllocator(device: device)
+        
+        let mdlMesh = MDLMesh.newCapsule(withHeight: 2.5, radii: simd_float2(2.5, 4), radialSegments: 50, verticalSegments: 2, hemisphereSegments: 25, geometryType: .triangles, inwardNormals: false, allocator: metalAllocator)
         
         let mdlVertexDescriptor = MTKModelIOVertexDescriptorFromMetal(mtlVertexDescriptor)
         
@@ -376,7 +397,7 @@ private func draw(renderEncoder: MTLRenderCommandEncoder, viewport: MTLViewport,
                     ]
                 
                 let primitives: [MTLPrimitiveType?] = [
-                    nil, nil, .lineStrip, nil
+                    .triangle, .triangle, .lineStrip, .triangle
                 ]
                 let pipelines = [
                     pipelineState,
@@ -437,7 +458,7 @@ private func draw(renderEncoder: MTLRenderCommandEncoder, viewport: MTLViewport,
                     ]
                 
                 let primitives: [MTLPrimitiveType?] = [
-                    nil, nil, .lineStrip, nil
+                    .lineStrip, .lineStrip, .lineStrip, .lineStrip
                 ]
                 let pipelines = [
                     pipelineState,
